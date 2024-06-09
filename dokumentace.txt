@@ -1,6 +1,0 @@
-
-
-
-			ON_TURN ACTION TRUE a GAME BREAK
-
-			SE NESMÍ STÁT NARÁZ.
