@@ -1,0 +1,624 @@
+import pygame
+import time
+from network import Network
+
+pygame.init()
+
+screen_width, screen_height = pygame.display.list_modes(0, pygame.FULLSCREEN, 0)[0]
+
+if (screen_width, screen_height) < (1024, 768):
+    raise Exception("Invalid screen scale.")
+
+screen = pygame.display.set_mode((screen_width, screen_height))
+clock = pygame.time.Clock()
+
+# colors
+black_col = (0, 0, 0)
+grey_col = (127, 127, 127)
+red_col = (255, 0, 0)
+indigo_col = (75, 0, 130)
+
+# fonts
+base_font_50 = pygame.font.Font(None, 50)
+base_font_100 = pygame.font.Font(None, 100)
+base_font_50.set_underline(True)
+
+# variables
+card_scale = (115, 180)
+
+
+"""load images"""
+
+# backgrounds #
+menu_bg_img = pygame.image.load("materials/main_bg0.png")
+table_img = pygame.image.load("materials/table.png")
+
+
+# buttons #
+join_room_img = pygame.image.load("materials/join_room.png")
+create_room_img = pygame.image.load("materials/create_room.png")
+
+confirm_img = pygame.image.load("materials/confirm.png")
+back_img = pygame.image.load("materials/back.png")
+
+start_img = pygame.image.load("materials/start.png")
+cancel_img = pygame.image.load("materials/cancel.png")
+
+color_img = pygame.image.load("materials/color.png")
+number_img = pygame.image.load("materials/number.png")
+
+quit_img = pygame.image.load("materials/quit.png")
+quit2_img = pygame.image.load("materials/quit2.png")
+
+play_img = pygame.image.load("materials/play.png")
+play_green_img = pygame.image.load("materials/play_green.png")
+play_red_img = pygame.image.load("materials/play_red.png")
+
+discard_img = pygame.image.load("materials/discard.png")
+discard_green_img = pygame.image.load("materials/discard_green.png")
+discard_red_img = pygame.image.load("materials/discard_red.png")
+
+hint_img = pygame.image.load("materials/hint.png")
+hint_green_img = pygame.image.load("materials/hint_green.png")
+hint_red_img = pygame.image.load("materials/hint_red.png")
+
+rules_img = pygame.image.load("materials/rules.png")
+
+
+# cards #
+cards_imgs = [pygame.image.load("materials/grey0.png")]
+
+cards_colors = ["blue", "green", "purple", "red", "yellow"]
+for x in cards_colors:
+    for y in range(1, 6):
+        img = pygame.image.load(f"materials/{x}{y}.png")
+        cards_imgs.append(img)
+
+
+# bases positions
+bases = {"down": (screen_width/2, screen_height/10*9),
+         "middle": (screen_width/2, screen_height/7),
+         "middle left": (screen_width/3.25, screen_height/7),
+         "middle right": (screen_width/3.25*2.25, screen_height/7),
+         "left": (screen_width/11, screen_height/2),
+         "right": (screen_width/11*10, screen_height/2)}
+
+# cards itself
+cards = ["grey0",
+         "blue1", "blue2", "blue3", "blue4", "blue5",
+         "green1", "green2", "green3", "green4", "green5",
+         "purple1", "purple2", "purple3", "purple4", "purple5",
+         "red1", "red2", "red3", "red4", "red5",
+         "yellow1", "yellow2", "yellow3", "yellow4", "yellow5"]
+
+
+class ObjectsDrawManager:
+    @staticmethod
+    def image(related_data):
+        x, y = related_data["coordinates"]
+        img = related_data["img"]
+        try:
+            a, b = related_data["transform"]
+            img = pygame.transform.scale(img, (int(a), int(b)))
+        except:
+            pass
+        try:
+            img = pygame.transform.rotate(img, related_data["rotate"])
+        except:
+            pass
+
+        rect = img.get_rect()
+        rect.center = (x, y)
+        screen.blit(img, (rect.x, rect.y))
+
+        return rect
+
+    @staticmethod
+    def text(related_data):
+        text = related_data["text"]
+        color = related_data["color"]
+        font = related_data["font"]
+
+        try:
+            if related_data["line"]:
+                font.set_underline(True)
+        except:
+            font.set_underline(False)
+
+        text_surface = font.render(text, True, color)
+
+        related_data["img"] = text_surface
+
+        return ObjectsDrawManager.image(related_data)
+
+
+class RedrawWindow:
+    def __init__(self, game, my_player_number):
+        self.my_player_number = my_player_number
+        self.number_of_players = len(game.players)
+        self.game = game
+        self.base_ids = []
+        self.printed_itself = []
+        self.printed_related = []
+        self.printed_player = []
+
+    def main(self):
+        # table background
+        ObjectsDrawManager.image({"img": table_img,
+                                  "coordinates": (screen_width / 2, screen_height / 2),
+                                  "transform": (screen_width, screen_height)})
+
+        self.bases_setup()
+
+        if self.game.ready:
+            for player in self.game.players:
+                base = bases[self.base_ids[player]]
+
+                self.players_names(player, base)
+
+                self.players_cards(player, base)
+
+        return self.printed_itself, self.printed_related, self.printed_player
+
+    def bases_setup(self):
+        if self.number_of_players == 2:
+            self.base_ids = ["middle"]
+        elif self.number_of_players == 3:
+            if self.my_player_number == 1:
+                self.base_ids = ["middle right", "middle left"]
+            else:
+                self.base_ids = ["middle left", "middle right"]
+        elif self.number_of_players == 4:
+            if self.my_player_number == 1:
+                self.base_ids = ["right", "left", "middle"]
+            elif self.my_player_number == 2:
+                self.base_ids = ["middle", "right", "left"]
+            else:
+                self.base_ids = ["left", "middle", "right"]
+        elif self.number_of_players == 5:
+            if self.my_player_number == 1:
+                self.base_ids = ["right", "left", "middle left", "middle right"]
+            elif self.my_player_number == 2:
+                self.base_ids = ["middle right", "right", "left", "middle left"]
+            elif self.my_player_number == 3:
+                self.base_ids = ["middle left", "middle right", "right", "left"]
+            else:
+                self.base_ids = ["left", "middle left", "middle right", "right"]
+
+        self.base_ids.insert(self.my_player_number, "down")
+
+    def players_names(self, player, base):
+        if self.base_ids[player] != "down":
+            if self.base_ids[player] == "left":
+                rotate = 90
+                x = base[0] - 120
+                y = base[1]
+            elif self.base_ids[player] == "right":
+                rotate = -90
+                x = base[0] + 120
+                y = base[1]
+            else:
+                rotate = 0
+                x = base[0]
+                y = base[1] - 120
+
+            ObjectsDrawManager.text({"coordinates": (x, y),
+                                     "font": base_font_50,
+                                     "text": self.game.players[player],
+                                     "color": black_col,
+                                     "rotate": rotate})
+
+    def players_cards(self, player, base):
+        if self.number_of_players >= 4:
+            part_pos = -(card_scale[0] / 2 * 3 + 15)
+        else:
+            part_pos = -(card_scale[0] / 2 * 4 + 20)
+
+        for card in self.game.players_cards[player]:
+            if player == self.my_player_number:
+                img = cards_imgs[0]
+            else:
+                img = cards_imgs[cards.index(card)]
+
+            if self.base_ids[player] == "left":
+                rotate = 90
+                x = base[0]
+                y = base[1] + part_pos
+            elif self.base_ids[player] == "right":
+                rotate = -90
+                x = base[0]
+                y = base[1] - part_pos
+            else:
+                rotate = 0
+                x = base[0] + part_pos
+                y = base[1]
+
+            rect = ObjectsDrawManager.image({"img": img,
+                                             "coordinates": (x, y),
+                                             "transform": card_scale,
+                                             "rotate": rotate})
+
+            if player == self.my_player_number:
+                self.printed_related.append("grey0")
+            else:
+                self.printed_related.append(card)
+
+            self.printed_itself.append(rect)
+            self.printed_player.append(player)
+
+            part_pos += card_scale[0] + 10
+
+
+class Game:
+    def __init__(self, player_number, network):
+        self.player_number = player_number
+        self.n = network
+        self.data = "None"
+        self.counter = 0
+        self.status = None
+        self.game = None
+        self.printed_related = []
+        self.printed_player = []
+        self.return_value = [[], [], None]
+        self.chosen_card = None
+
+    def related(self):
+        try:
+            self.game = self.n.send(self.data)
+            if self.game is None:
+                return [], [], "Disconnected from game. 0"
+        except NameError:
+            return [], [], "Disconnected from game. 2"
+
+        printed_itself, self.printed_related, self.printed_player = RedrawWindow(self.game, self.player_number).main()
+
+        self.return_value[0] += printed_itself
+        self.return_value[1] += self.printed_related
+
+        if 0 not in self.game.players:
+            return [], [], "Host left game."
+
+        elif self.game.ready:
+
+            img1 = play_img
+            img2 = discard_img
+            img3 = hint_img
+
+            self.data = "None"
+
+            if self.player_number == 0 and self.game.standing is None:
+                self.data = "standing"
+
+            elif self.player_number == self.game.standing:
+                if self.counter != 120:
+                    self.counter += 1
+                    ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 2),
+                                             "font": base_font_100,
+                                             "text": "Your turn!",
+                                             "color": black_col})
+
+                img1 = play_green_img
+                img2 = discard_green_img
+                img3 = hint_green_img
+
+                if self.status == "play":
+                    img1 = play_red_img
+                elif self.status == "discard":
+                    img2 = discard_red_img
+                elif self.status == "hint":
+                    img3 = hint_red_img
+
+                if self.status == "choose":
+                    number_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.8),
+                                                           "img": number_img,
+                                                           "transform": (screen_width / 7.5, screen_height / 14)})
+                    color_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 2.2),
+                                                          "img": color_img,
+                                                          "transform": (screen_width / 10, screen_height / 14)})
+
+                    self.return_value[0] += [number_btn, color_btn]
+                    self.return_value[1] += ["number", "color"]
+
+            else:
+                self.counter = 0
+
+            # buttons
+            play_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 20, screen_height / 11 * 10),
+                                                 "img": img1,
+                                                 "transform": (screen_width / 12, screen_height / 14)})
+            discard_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 5.9, screen_height / 11 * 10),
+                                                    "img": img2,
+                                                    "transform": (screen_width / 7, screen_height / 14)})
+            hint_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 3.45, screen_height / 11 * 10),
+                                                 "img": img3,
+                                                 "transform": (screen_width / 12, screen_height / 14)})
+            rules_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 17 * 16, screen_height / 11 * 10),
+                                                  "img": rules_img,
+                                                  "transform": (screen_width / 10, screen_height / 14)})
+
+            self.return_value[0] += [play_btn, discard_btn, hint_btn, rules_btn]
+            self.return_value[1] += ["play", "discard", "hint", "rules"]
+
+        else:
+            # text
+            ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 1.8),
+                                     "font": base_font_50,
+                                     "text": "Waiting for players...",
+                                     "color": black_col})
+            ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 1.6),
+                                     "font": base_font_50,
+                                     "text": f"{len(self.game.players)}/5   room {self.game.id}",
+                                     "color": black_col})
+
+            # buttons
+            cancel_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.2),
+                                                   "img": cancel_img,
+                                                   "transform": (screen_width / 4, screen_height / 8)})
+
+            if self.player_number == 0 and len(self.game.players) >= 2:
+                start_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.4),
+                                                      "img": start_img,
+                                                      "transform": (screen_width / 5, screen_height / 8)})
+
+                self.return_value[0] += [start_btn, cancel_btn]
+                self.return_value[1] += ["start", "cancel"]
+
+            else:
+
+                self.return_value[0] += [cancel_btn]
+                self.return_value[1] += ["cancel"]
+
+        return self.return_value
+
+    def button_collide(self, button):
+        if self.game.ready and self.player_number == self.game.standing:
+            if button == "rules":
+                self.status = None
+            elif button == ("hint" or "discard" or "play"):
+                self.status = button
+            elif button == "number":
+                self.hint("number")
+            elif button == "color":
+                self.hint("color")
+
+        if self.player_number == 0 and len(self.game.players) >= 2:
+            if button == "start":
+                self.data = "ready"
+        if not self.game.ready:
+            if button == "cancel":
+                self.n.send("left")
+                return [], [], "Please wait..."
+
+        colors = ["blue", "green", "purple", "red", "yellow", "grey"]
+        run = False
+        for color in colors:
+            for n in range(6):
+                if button == f"{color}{n}" and self.player_number == self.game.standing and self.status is not None:
+                    index = self.printed_related.index(button)
+                    player = self.printed_player[index]
+                    self.chosen_card = button, player
+                    if self.status == "hint":
+                        self.status = "choose"
+                    run = True
+                    break
+
+        if not run:
+            self.return_value = [[], [], None]
+
+    def hint(self, status):
+        card, player = self.chosen_card
+        self.data = [status, card, player]
+
+    def text(self, text):
+        pass
+
+
+class RoomConnectSetup:
+    def __init__(self, action, nickname):
+        self.action = action
+        self.nickname = nickname
+        self.act_color = black_col
+        self.text1 = None
+        self.text2 = None
+        if self.action == "join":
+            self.default_text = "room number"
+            self.act_text = self.default_text
+            self.max_len = 5
+        else:
+            self.default_text = "password"
+            self.act_text = self.default_text
+            self.max_len = 18
+
+    def related(self):
+        # background
+        ObjectsDrawManager.image({"img": menu_bg_img,
+                                  "coordinates": (screen_width / 2, screen_height / 2),
+                                  "transform": (screen_width, screen_height)})
+
+        # text and related context
+        ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 1.8),
+                                 "font": base_font_50,
+                                 "text": self.act_text,
+                                 "color": self.act_color,
+                                 "line": True})
+
+        # buttons
+        confirm_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.5),
+                                                "img": confirm_img,
+                                                "transform": (screen_width / 3.5, screen_height / 8)})
+        back_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.25),
+                                             "img": back_img,
+                                             "transform": (screen_width / 6, screen_height / 8)})
+
+        return [confirm_btn, back_btn], ["confirm", "back"], None
+
+    def text(self, text):
+        self.act_color = black_col
+        if self.act_text == "room number" or self.act_text == "password":
+            self.act_text = ""
+        if text == "-":
+            self.act_text = self.act_text[:-1]
+        elif len(self.act_text) < self.max_len:
+            self.act_text += text
+
+    def button_collide(self, button):
+        if button is not None:
+            self.act_color = black_col
+        if button == "confirm":
+            if self.act_text == "room number" or self.act_text == "password" or self.act_text == "":
+                self.act_color = red_col
+                self.act_text = self.default_text
+            else:
+                if self.default_text == "room number":
+                    try:
+                        self.text1 = int(self.act_text)
+                        self.default_text = "password"
+                        self.act_text = self.default_text
+                        self.max_len = 18
+                    except ValueError:
+                        self.act_color = red_col
+                else:
+                    ObjectsDrawManager.image({"img": menu_bg_img,
+                                              "coordinates": (screen_width / 2, screen_height / 2),
+                                              "transform": (screen_width, screen_height)})
+                    ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 1.8),
+                                             "font": base_font_50,
+                                             "text": "Loading...",
+                                             "color": black_col})
+                    pygame.display.update()
+                    self.text2 = self.act_text
+                    self.final_stuff()
+        elif button == "back":
+            if self.default_text == "password" and self.action == "join":
+                self.default_text = "room number"
+                self.act_text = self.default_text
+                self.max_len = 5
+            else:
+                Core(Menu()).loop()
+
+    def final_stuff(self):
+        n = Network()
+
+        data = {"action": self.action, "nickname": self.nickname, "room number": self.text1, "password": self.text2}
+        status = n.connect(data)
+
+        if type(status) == int:
+            text = Core(Game(status, n)).loop()
+            bg = table_img
+        elif type(status) == str:
+            text = status
+            bg = menu_bg_img
+        else:
+            text = "Connection to server failed."
+            bg = menu_bg_img
+
+        ObjectsDrawManager.image({"img": bg,
+                                  "coordinates": (screen_width / 2, screen_height / 2),
+                                  "transform": (screen_width, screen_height)})
+        ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 1.8),
+                                 "font": base_font_50,
+                                 "text": text,
+                                 "color": black_col})
+
+        pygame.display.update()
+        time.sleep(2)
+
+        Core(Menu()).loop()
+
+
+class Menu:
+    def __init__(self):
+        self.user_text = "nickname"
+        self.act_color = black_col
+
+    def related(self):
+        # background
+        ObjectsDrawManager.image({"img": menu_bg_img,
+                                  "coordinates": (screen_width / 2, screen_height / 2),
+                                  "transform": (screen_width, screen_height)})
+
+        # text and related context
+        ObjectsDrawManager.text({"coordinates": (screen_width / 2, screen_height / 1.8),
+                                 "font": base_font_50,
+                                 "text": self.user_text,
+                                 "color": self.act_color,
+                                 "line": True})
+
+        # buttons
+        join_room_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.5),
+                                                  "img": join_room_img,
+                                                  "transform": (screen_width / 3, screen_height / 8)})
+        create_room_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.25),
+                                                    "img": create_room_img,
+                                                    "transform": (screen_width / 2.5, screen_height / 8)})
+        quit_btn = ObjectsDrawManager.image({"coordinates": (screen_width / 2, screen_height / 1.075),
+                                             "img": quit_img,
+                                             "transform": (screen_width / 6, screen_height / 8)})
+
+        return [join_room_btn, create_room_btn, quit_btn], ["join", "create", "quit"], None
+
+    def text(self, text):
+        self.act_color = black_col
+        if self.user_text == "nickname":
+            self.user_text = ""
+        if text == "-":
+            self.user_text = self.user_text[:-1]
+        elif len(self.user_text) < 18:
+            self.user_text += text
+
+    def button_collide(self, button):
+        if button is not None:
+            self.act_color = black_col
+        if button == "join":
+            if self.user_text == "" or self.user_text == "nickname":
+                self.act_color = red_col
+                self.user_text = "nickname"
+            else:
+                Core(RoomConnectSetup("join", self.user_text)).loop()
+        elif button == "create":
+            if self.user_text == "" or self.user_text == "nickname":
+                self.act_color = red_col
+                self.user_text = "nickname"
+            else:
+                Core(RoomConnectSetup("create", self.user_text)).loop()
+        elif button == "quit":
+            pygame.quit()
+        elif button is None:
+            if self.user_text == "":
+                self.user_text = "nickname"
+
+
+class Core:
+    def __init__(self, cls):
+        self.super_cls = cls
+
+    def loop(self):
+        while True:
+            clock.tick(60)
+
+            buttons_itself, buttons_related, return_value = self.super_cls.related()
+
+            if return_value is not None:
+                return return_value
+
+            # event handler
+            for event in pygame.event.get():
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    for button in buttons_itself:
+                        if button.collidepoint(event.pos):
+                            index = buttons_itself.index(button)
+                            self.super_cls.button_collide(buttons_related[index])
+                            break
+                    else:
+                        self.super_cls.button_collide(None)
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_BACKSPACE:
+                        self.super_cls.text("-")
+                    else:
+                        self.super_cls.text(event.unicode)
+
+            pygame.display.update()
+
+
+Core(Menu()).loop()
